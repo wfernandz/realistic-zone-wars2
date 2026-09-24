@@ -3,6 +3,424 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fortnite Web 3D - Mapa Realista y Autobús</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        /* HUD Estilo Fortnite */
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+
+        #game-message {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.75);
+            border: 2px solid #f3f312;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #f3f312;
+            text-align: center;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(243, 243, 18, 0.5);
+        }
+
+        .health-shield {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 300px;
+        }
+
+        .bar-label {
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 2px;
+            color: #fff;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        .bar-container {
+            width: 100%;
+            height: 18px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(255,255,255,0.8);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .shield-fill { width: 100%; height: 100%; background: #00a2e8; transition: width 0.2s; }
+        .health-fill { width: 100%; height: 100%; background: #ffffff; transition: width 0.2s; }
+
+        .materials {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.2);
+            font-size: 15px;
+        }
+
+        .inventory-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+        }
+
+        .slot {
+            width: 65px;
+            height: 65px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            text-align: center;
+            color: white;
+            position: relative;
+        }
+
+        .slot.active {
+            border-color: #f3f312;
+            box-shadow: 0 0 8px #f3f312;
+        }
+
+        .slot-key {
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 9px;
+            color: #ccc;
+        }
+
+        .rarity-rare { color: #00a2e8; font-weight: bold; }
+        .rarity-uncommon { color: #22b14c; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="hud">
+        <div id="game-message">AUTOBÚS DE BATALLA: Presiona [ESPACIO] para saltar</div>
+
+        <div class="materials">
+            <div>🪵 Madera: <span id="mat-wood">100</span></div>
+            <div>🧱 Ladrillo: <span id="mat-brick">50</span></div>
+            <div>⚙️ Metal: <span id="mat-metal">25</span></div>
+            <div style="margin-top: 5px; font-size: 12px; color: #f3f312;">👥 Vivos: <span id="player-count">20</span></div>
+        </div>
+
+        <div class="health-shield">
+            <div class="bar-label">ESCUDO (<span id="shield-val">100</span>)</div>
+            <div class="bar-container"><div class="shield-fill" id="shieldBar" style="width: 100%;"></div></div>
+            <div class="bar-label">VIDA (<span id="health-val">100</span>)</div>
+            <div class="bar-container"><div class="health-fill" id="healthBar" style="width: 100%;"></div></div>
+        </div>
+
+        <div class="inventory-bar">
+            <div class="slot active" id="slot-0"><span class="slot-key">1</span>Escopeta<br><span class="rarity-rare">Rara (95d)</span></div>
+            <div class="slot" id="slot-1"><span class="slot-key">2</span>Fusil<br><span class="rarity-uncommon">Verde (33d)</span></div>
+            <div class="slot" id="slot-2"><span class="slot-key">3</span>Botiquín</div>
+            <div class="slot" id="slot-3"><span class="slot-key">4</span>Escudos</div>
+            <div class="slot" id="slot-4"><span class="slot-key">5</span>Material</div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Cielo azul brillante
+        scene.fog = new THREE.FogExp2(0x87ceeb, 0.003);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        // Iluminación realista estilo Fortnite
+        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+        const dirLight = new THREE.DirectionalLight(0xfffaed, 0.9);
+        dirLight.position.set(150, 300, 150);
+        scene.add(dirLight);
+
+        // --- MAPA REALISTA (Suelo con vegetación y obstáculos) ---
+        const plane = new THREE.Mesh(
+            new THREE.PlaneGeometry(800, 800), 
+            new THREE.MeshStandardMaterial({ color: 0x3b7a57, roughness: 0.9 })
+        );
+        plane.rotation.x = -Math.PI / 2;
+        scene.add(plane);
+
+        // Generar árboles y rocas por el mapa
+        const treeMatTrunk = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+        const treeMatLeaves = new THREE.MeshStandardMaterial({ color: 0x1e5631 });
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x7f8c8d });
+
+        for (let i = 0; i < 70; i++) {
+            let x = (Math.random() - 0.5) * 700;
+            let z = (Math.random() - 0.5) * 700;
+
+            // Árboles
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 3), treeMatTrunk);
+            trunk.position.set(x, 1.5, z);
+            const leaves = new THREE.Mesh(new THREE.ConeGeometry(2.5, 5, 6), treeMatLeaves);
+            leaves.position.set(x, 4.5, z);
+            scene.add(trunk);
+            scene.add(leaves);
+
+            // Rocas aleatorias
+            if (i % 2 === 0) {
+                let rx = x + (Math.random() - 0.5) * 30;
+                let rz = z + (Math.random() - 0.5) * 30;
+                const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(Math.random() * 1.5 + 0.8), rockMat);
+                rock.position.set(rx, 1, rz);
+                scene.add(rock);
+            }
+        }
+
+        // --- AUTOBÚS DE BATALLA REALISTA (Estilo Fortnite) ---
+        const battleBus = new THREE.Group();
+        
+        // Chasis del autobús (Azul clásico)
+        const busBody = new THREE.Mesh(new THREE.BoxGeometry(4.5, 3.2, 10), new THREE.MeshStandardMaterial({ color: 0x1e88e5 }));
+        busBody.position.y = 1.6;
+        battleBus.add(busBody);
+
+        // Techo y detalles frontales
+        const busRoof = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.2, 8), new THREE.MeshStandardMaterial({ color: 0xffb300 }));
+        busRoof.position.set(0, 3.8, 0);
+        battleBus.add(busRoof);
+
+        // Parabrisas y ventanas
+        const windowMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.1 });
+        const frontWindow = new THREE.Mesh(new THREE.BoxGeometry(4.1, 1, 0.2), windowMat);
+        frontWindow.position.set(0, 2.2, 5.1);
+        battleBus.add(frontWindow);
+
+        // Globo aerostático superior característico del Autobús de Batalla
+        const balloon = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 16), new THREE.MeshStandardMaterial({ color: 0xd32f2f, roughness: 0.4 }));
+        balloon.position.set(0, 9.5, 0);
+        battleBus.add(balloon);
+
+        // Cuerdas del globo al bus
+        const ropeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+        const lineGeo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-1.5, 4.4, 0), new THREE.Vector3(-3, 6, 0)]);
+        const line1 = new THREE.Line(lineGeo1, ropeMat);
+        battleBus.add(line1);
+
+        battleBus.position.set(0, 85, -250);
+        scene.add(battleBus);
+
+        // --- ESTADO DEL JUGADOR Y BOTS ---
+        let health = 100, shield = 100;
+        let activeSlot = 0;
+        let aliveCount = 20;
+
+        const bots = [];
+        const botGeo = new THREE.BoxGeometry(1.5, 3, 1);
+        
+        for (let i = 0; i < 20; i++) {
+            const mat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
+            const bot = new THREE.Mesh(botGeo, mat);
+            bot.position.set((Math.random() - 0.5) * 400, 1.5, (Math.random() - 0.5) * 400);
+            bot.userData = { health: 100, alive: true };
+            scene.add(bot);
+            bots.push(bot);
+        }
+
+        const bullets = [];
+        const bulletGeo = new THREE.SphereGeometry(0.3, 8, 8);
+        const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+
+        let gameState = "BUS";
+        const player = new THREE.Mesh(botGeo, new THREE.MeshStandardMaterial({ color: 0x9932cc }));
+        player.position.copy(battleBus.position);
+        player.position.y -= 1;
+        scene.add(player);
+
+        const parachute = new THREE.Mesh(new THREE.ConeGeometry(4, 2, 4), new THREE.MeshStandardMaterial({ color: 0xffffff, wireframe: true }));
+        parachute.position.set(0, 3, 0);
+        parachute.visible = false;
+        player.add(parachute);
+
+        // Controles
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            
+            if (e.code === 'Space') {
+                if (gameState === "BUS") {
+                    gameState = "FALLING";
+                    document.getElementById('game-message').innerText = "¡CAÍDA LIBRE! Presiona [ESPACIO] para abrir el Paracaídas";
+                } else if (gameState === "FALLING" && player.position.y > 10) {
+                    parachute.visible = true;
+                    gameState = "PARACHUTE";
+                    document.getElementById('game-message').innerText = "FLOTANDO - Busca una zona despejada";
+                }
+            }
+
+            if (e.key >= '1' && e.key <= '5') {
+                document.getElementById(`slot-${activeSlot}`).classList.remove('active');
+                activeSlot = parseInt(e.key) - 1;
+                document.getElementById(`slot-${activeSlot}`).classList.add('active');
+            }
+
+            if (e.key === '3') { health = Math.min(100, health + 100); updateHUD(); }
+            if (e.key === '4') { shield = Math.min(100, shield + 50); updateHUD(); }
+        });
+
+        window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+        window.addEventListener('click', () => {
+            if (gameState === "LANDED" && activeSlot < 2) {
+                const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+                bullet.position.copy(player.position);
+                bullet.userData = { velocity: new THREE.Vector3(0, 0, 2.5) };
+                scene.add(bullet);
+                bullets.push(bullet);
+            }
+        });
+
+        function updateHUD() {
+            document.getElementById('health-val').innerText = health;
+            document.getElementById('shield-val').innerText = shield;
+            document.getElementById('healthBar').style.width = health + '%';
+            document.getElementById('shieldBar').style.width = shield + '%';
+            document.getElementById('player-count').innerText = aliveCount;
+        }
+
+        // --- BUCLE DE JUEGO ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gameState === "BUS") {
+                battleBus.position.z += 0.8;
+                player.position.copy(battleBus.position);
+                player.position.y -= 2;
+                camera.position.set(player.position.x, player.position.y + 12, player.position.z - 25);
+                camera.lookAt(player.position);
+            } 
+            else if (gameState === "FALLING" || gameState === "PARACHUTE") {
+                let fallSpeed = (gameState === "PARACHUTE") ? 0.35 : 1.6;
+                player.position.y -= fallSpeed;
+
+                if (keys['w']) player.position.z += 0.6;
+                if (keys['s']) player.position.z -= 0.6;
+                if (keys['a']) player.position.x -= 0.6;
+                if (keys['d']) player.position.x += 0.6;
+
+                camera.position.set(player.position.x, player.position.y + 8, player.position.z - 15);
+                camera.lookAt(player.position);
+
+                if (player.position.y <= 1.5) {
+                    player.position.y = 1.5;
+                    parachute.visible = false;
+                    gameState = "LANDED";
+                    document.getElementById('game-message').innerText = "¡PARTIDA EN CURSO! Muévete con WASD, Dispara con Click";
+                }
+            } 
+            else if (gameState === "LANDED") {
+                let speed = keys['shift'] ? 0.8 : 0.4;
+                if (keys['w']) player.position.z -= speed;
+                if (keys['s']) player.position.z += speed;
+                if (keys['a']) player.position.x -= speed;
+                if (keys['d']) player.position.x += speed;
+
+                camera.position.set(player.position.x, player.position.y + 5, player.position.z - 10);
+                    camera.lookAt(player.position);
+
+                // Movimiento y combate de los 20 bots
+                bots.forEach((bot) => {
+                    if (!bot.userData.alive) return;
+                    bot.position.x += (Math.random() - 0.5) * 0.4;
+                    bot.position.z += (Math.random() - 0.5) * 0.4;
+
+                    if (Math.random() < 0.002 && aliveCount > 1) {
+                        let targetBot = bots[Math.floor(Math.random() * bots.length)];
+                        if (targetBot !== bot && targetBot.userData.alive) {
+                            targetBot.userData.health -= 35;
+                            if (targetBot.userData.health <= 0) {
+                                targetBot.userData.alive = false;
+                                scene.remove(targetBot);
+                                aliveCount--;
+                                updateHUD();
+                            }
+                        }
+                    }
+                });
+
+                bullets.forEach((bullet, index) => {
+                    bullet.position.add(bullet.userData.velocity);
+                    bots.forEach((bot) => {
+                        if (bot.userData.alive && bullet.position.distanceTo(bot.position) < 2) {
+                            bot.userData.health -= 50;
+                            scene.remove(bullet);
+                            bullets.splice(index, 1);
+
+                            if (bot.userData.health <= 0) {
+                                bot.userData.alive = false;
+                                scene.remove(bot);
+                                aliveCount--;
+                                updateHUD();
+                            }
+                        }
+                    });
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fortnite Web 3D - Battle Royale Completo</title>
     <style>
         body {
