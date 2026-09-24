@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fortnite Web 3D - Battle Royale</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        /* HUD Estilo Fortnite */
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+
+        /* Pantalla de Estado / Mensajes */
+        #game-message {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #f3f312;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #f3f312;
+            text-align: center;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(243, 243, 18, 0.5);
+        }
+
+        /* Barra de Vida y Escudo */
+        .health-shield {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 300px;
+        }
+
+        .bar-label {
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 2px;
+            color: #fff;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        .bar-container {
+            width: 100%;
+            height: 18px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(255,255,255,0.8);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .shield-fill { width: 100%; height: 100%; background: #00a2e8; transition: width 0.2s; }
+        .health-fill { width: 100%; height: 100%; background: #ffffff; transition: width 0.2s; }
+
+        /* Materiales */
+        .materials {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.2);
+            font-size: 15px;
+        }
+
+        /* Inventario Estilo Fortnite */
+        .inventory-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+        }
+
+        .slot {
+            width: 65px;
+            height: 65px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            text-align: center;
+            color: white;
+            position: relative;
+        }
+
+        .slot.active {
+            border-color: #f3f312;
+            box-shadow: 0 0 8px #f3f312;
+        }
+
+        .slot-key {
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 9px;
+            color: #ccc;
+        }
+
+        /* Rarezas */
+        .rarity-rare { color: #00a2e8; font-weight: bold; }
+        .rarity-uncommon { color: #22b14c; font-weight: bold; }
+        .rarity-legendary { color: #ff7f27; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <!-- HUD -->
+    <div class="hud">
+        <div id="game-message">FASE DE AUTOBÚS: Presiona [ESPACIO] para saltar</div>
+
+        <div class="materials">
+            <div>🪵 Madera: <span id="mat-wood">100</span></div>
+            <div>🧱 Ladrillo: <span id="mat-brick">50</span></div>
+            <div>⚙️ Metal: <span id="mat-metal">25</span></div>
+            <div style="margin-top: 5px; font-size: 12px; color: #f3f312;">👥 Vivos: <span id="player-count">20</span></div>
+        </div>
+
+        <div class="health-shield">
+            <div class="bar-label">ESCUDO</div>
+            <div class="bar-container"><div class="shield-fill" id="shieldBar" style="width: 100%;"></div></div>
+            <div class="bar-label">VIDA</div>
+            <div class="bar-container"><div class="health-fill" id="healthBar" style="width: 100%;"></div></div>
+        </div>
+
+        <div class="inventory-bar">
+            <div class="slot active" id="slot-0"><span class="slot-key">1</span>Escopeta<br><span class="rarity-rare">Rara</span></div>
+            <div class="slot" id="slot-1"><span class="slot-key">2</span>Fusil<br><span class="rarity-uncommon">Verde</span></div>
+            <div class="slot" id="slot-2"><span class="slot-key">3</span>Botiquín</div>
+            <div class="slot" id="slot-3"><span class="slot-key">4</span>Escudos</div>
+            <div class="slot" id="slot-4"><span class="slot-key">5</span>Material</div>
+        </div>
+    </div>
+
+    <!-- Importar Three.js desde CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        // --- CONFIGURACIÓN DEL MUNDO 3D ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Cielo azul Fortnite
+        scene.fog = new THREE.FogExp2(0x87ceeb, 0.005);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        // Luces
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(100, 200, 100);
+        scene.add(dirLight);
+
+        // Suelo (Mapa)
+        const planeGeo = new THREE.PlaneGeometry(1000, 1000);
+        const planeMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57 });
+        const plane = new THREE.Mesh(planeGeo, planeMat);
+        plane.rotation.x = -Math.PI / 2;
+        scene.add(plane);
+
+        // --- CREAR 20 PERSONAJES (BOTS) EN EL MAPA ---
+        const bots = [];
+        const botGeo = new THREE.BoxGeometry(1.5, 3, 1);
+        const botMat = new THREE.MeshStandardMaterial({ color: 0xff4500 }); // Skins enemigas
+
+        for (let i = 0; i < 19; i++) {
+            const bot = new THREE.Mesh(botGeo, botMat);
+            bot.position.set(
+                (Math.random() - 0.5) * 400,
+                1.5,
+                (Math.random() - 0.5) * 400
+            );
+            scene.add(bot);
+            bots.push(bot);
+        }
+
+        // --- JUGADOR Y AUTOBÚS ---
+        let gameState = "BUS"; // "BUS", "FALLING", "LANDED"
+        
+        // Autobús de Batalla
+        const busGeo = new THREE.BoxGeometry(6, 4, 12);
+        const busMat = new THREE.MeshStandardMaterial({ color: 0x1e90ff });
+        const battleBus = new THREE.Mesh(busGeo, busMat);
+        battleBus.position.set(0, 80, -200);
+        scene.add(battleBus);
+
+        // Jugador (Cubo representativo con mochila)
+        const playerGeo = new THREE.BoxGeometry(1.5, 3, 1);
+        const playerMat = new THREE.MeshStandardMaterial({ color: 0x9932cc }); // Skin Épica
+        const player = new THREE.Mesh(playerGeo, playerMat);
+        player.position.set(0, 81, -200);
+        scene.add(player);
+
+        // Paracaídas visual
+        const chuteGeo = new THREE.ConeGeometry(4, 2, 4);
+        const chuteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, wireframe: true });
+        const parachute = new THREE.Mesh(chuteGeo, chuteMat);
+        parachute.position.set(0, 3, 0);
+        parachute.visible = false;
+        player.add(parachute);
+
+        // Controles de Movimiento
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            
+            // Saltar del autobús o abrir paracaídas
+            if (e.code === 'Space') {
+                if (gameState === "BUS") {
+                    gameState = "FALLING";
+                    document.getElementById('game-message').innerText = "¡EN CAÍDA LIBRE! Presiona [ESPACIO] para abrir el Paracaídas";
+                } else if (gameState === "FALLING" && player.position.y > 10) {
+                    parachute.visible = true;
+                    gameState = "PARACHUTE";
+                    document.getElementById('game-message').innerText = "FLOTANDO CON PARACAÍDAS - ¡Busca terreno!";
+                }
+            }
+        });
+        window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+        // Bucle Principal del Juego
+        let wood = 100;
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 1. Fase de Autobús
+            if (gameState === "BUS") {
+                battleBus.position.z += 0.8;
+                player.position.copy(battleBus.position);
+                player.position.y -= 1;
+                camera.position.set(player.position.x, player.position.y + 10, player.position.z - 20);
+                camera.lookAt(player.position);
+            } 
+            // 2. Fase de Caída Libre / Paracaídas
+            else if (gameState === "FALLING" || gameState === "PARACHUTE") {
+                let fallSpeed = (gameState === "PARACHUTE") ? 0.3 : 1.5;
+                player.position.y -= fallSpeed;
+
+                // Movimiento WASD en el aire
+                if (keys['w']) player.position.z += 0.6;
+                if (keys['s']) player.position.z -= 0.6;
+                if (keys['a']) player.position.x -= 0.6;
+                if (keys['d']) player.position.x += 0.6;
+
+                camera.position.set(player.position.x, player.position.y + 8, player.position.z - 15);
+                camera.lookAt(player.position);
+
+                // Aterrizaje
+                if (player.position.y <= 1.5) {
+                    player.position.y = 1.5;
+                    parachute.visible = false;
+                    gameState = "LANDED";
+                    document.getElementById('game-message').innerText = "¡PARTIDA INICIADA! Muévete con WASD, Shift para correr";
+                }
+            } 
+            // 3. Fase en Tierra (Juego Activo)
+            else if (gameState === "LANDED") {
+                let speed = keys['shift'] ? 0.8 : 0.4;
+                
+                if (keys['w']) player.position.z -= speed;
+                if (keys['s']) player.position.z += speed;
+                if (keys['a']) player.position.x -= speed;
+                if (keys['d']) player.position.x += speed;
+
+                camera.position.set(player.position.x, player.position.y + 5, player.position.z - 10);
+                camera.lookAt(player.position);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Redimensionar pantalla automáticamente
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
